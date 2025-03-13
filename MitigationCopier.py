@@ -281,6 +281,10 @@ def get_findings_from(from_app_guid, scan_type, from_sandbox_guid=None):
 
 def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from_credentials, to_credentials, scan_type='STATIC',from_sandbox_guid=None,
         to_sandbox_guid=None, propose_only=False, id_list=[], skip_id_list=[], fuzzy_match=False, include_original_user=False, include_profile_name=False):
+
+    with open('matched_findings.json', 'w+') as matched_findings:
+        matched_findings.write('{ "findings": {\n')
+
     if len(findings_from) == 0:
         return 0 # no source findings to copy!
 
@@ -330,6 +334,11 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
         if match == None:
             log.info('No approved match found for finding {} in {}'.format(to_id,formatted_from))
             continue
+        print('Match: {}'.format(match))
+        with open('matched_findings.json', 'a') as matched_findings:
+            matched_findings.write('"finding{}": '.format(counter))
+            json.dump(match, matched_findings, indent=4)
+            matched_findings.write(',')
 
         from_id = match.get('id')
 
@@ -359,6 +368,8 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
         set_in_memory_flaw_to_approved(copy_array_to,to_id) # so we don't attempt to mitigate approved finding twice
         counter += 1
 
+    with open('matched_findings.json', 'a') as matched_findings:
+        matched_findings.write('"finding99": { } \n}}')
     print('[*] Updated {} flaws in {}. See log file for details.'.format(str(counter),formatted_to))
 
 def get_exact_sandbox_name_match(sandbox_name, sandbox_candidates):
