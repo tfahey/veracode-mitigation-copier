@@ -280,15 +280,17 @@ def get_findings_from(from_app_guid, scan_type, from_sandbox_guid=None):
     return findings_from
 
 def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from_credentials, to_credentials, scan_type='STATIC',from_sandbox_guid=None,
-        to_sandbox_guid=None, propose_only=False, id_list=[], skip_id_list=[], fuzzy_match=False, include_original_user=False, include_profile_name=False):
+        to_sandbox_guid=None, propose_only=False, id_list=[], skip_id_list=[], fuzzy_match=False, include_original_user=False, include_profile_name=False, include_proposed=False):
     if len(findings_from) == 0:
         return 0 # no source findings to copy!
 
     from_app_name = from_credentials.run_with_credentials(lambda _: get_application_name(from_app_guid))
     formatted_from = format_application_name(from_app_guid,from_app_name,from_sandbox_guid)
-            
+
     findings_from_approved = filter_approved(findings_from,id_list,skip_id_list)
-    findings_from_proposed = filter_proposed(findings_from,id_list,skip_id_list)
+    findings_from_proposed = []
+    if include_proposed:
+        findings_from_proposed = filter_proposed(findings_from,id_list,skip_id_list)
 
     if len(findings_from_approved) == 0:
         logprint('No approved {} findings in "from" {}. Exiting.'.format(scan_type.lower(), formatted_from))
@@ -320,12 +322,12 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
         if this_to_finding['finding_status']['resolution_status'] == 'APPROVED':
             logprint ('Flaw ID {} in {} already has an accepted mitigation; skipped.'.format(to_id,formatted_to))
             continue
-        elif this_to_finding['finding_status']['resolution_status'] == 'PROPOSED':
+        elif include_proposed and this_to_finding['finding_status']['resolution_status'] == 'PROPOSED':
             logprint('Flaw ID {} in {} already has a proposed mitigation; skipped.'.format(to_id, formatted_to))
             continue
 
-        # Match on all findings to copy both Proposed and Approved mitigations
-        match = Findings().match(this_to_finding,findings_from,approved_matches_only=False,allow_fuzzy_match=fuzzy_match)
+        # If include_proposed is True, set approved_matches_only to False, to copy both proposed and approved mitigations
+        match = Findings().match(this_to_finding,findings_from,approved_matches_only=(not include_proposed),allow_fuzzy_match=fuzzy_match)
 
         if match == None:
             log.info('No approved match found for finding {} in {}'.format(to_id,formatted_from))
@@ -338,8 +340,6 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
         # Since we are pulling all findings, filter and ignore any findings that have 0 annotations
         mitigation_list = ''
         if match['finding'].get('annotations') != None:
-            # logprint ('{} annotations for flaw ID {} in {}...'.format(len(mitigation_list),to_id,formatted_to))
-        # else:
             mitigation_list = match['finding']['annotations']
             logprint ('Applying {} annotations for flaw ID {} in {}...'.format(len(mitigation_list),to_id,formatted_to))
 
@@ -457,6 +457,8 @@ def main():
     parser.add_argument('-io','--include_original_user',action='store_true', help='Set to include original submitter/approver into the copied mitigation comments')
     parser.add_argument('-in','--include_profile_name',action='store_true', help='Set to include original application profile name instead of GUID into the copied mitigation comments')
 
+    parser.add_argument('-ip','--include_proposed',action='store_true', help='Include proposed mitigations in the list of copied mitigation comments')
+
     args = parser.parse_args()
 
     setup_logger()
@@ -492,6 +494,8 @@ def main():
 
     include_original_user = args.include_original_user
     include_profile_name = args.include_profile_name
+
+    include_proposed = args.include_proposed
 
     if args.veracode_api_key_id and args.veracode_api_key_secret:
         from_credentials = VeracodeApiCredentials(args.veracode_api_key_id, args.veracode_api_key_secret)
@@ -573,10 +577,10 @@ def main():
     for index, to_app_id in enumerate(results_to_app_ids):
         if is_sast:
             match_for_scan_type(all_static_findings, from_app_guid=results_from_app_id, to_app_guid=to_app_id, dry_run=dry_run, scan_type='STATIC',
-                from_sandbox_guid=results_from_sandbox_id,to_sandbox_guid=results_to_sandbox_ids[index] if results_to_sandbox_ids else None,propose_only=propose_only,id_list=id_list,skip_id_list=skip_id_list,fuzzy_match=fuzzy_match, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name)
+                from_sandbox_guid=results_from_sandbox_id,to_sandbox_guid=results_to_sandbox_ids[index] if results_to_sandbox_ids else None,propose_only=propose_only,id_list=id_list,skip_id_list=skip_id_list,fuzzy_match=fuzzy_match, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name, include_proposed=include_proposed)
         if is_dast:
             match_for_scan_type(all_dynamic_findings, from_app_guid=results_from_app_id, to_app_guid=to_app_id, dry_run=dry_run,
-                scan_type='DYNAMIC',propose_only=propose_only,id_list=id_list,skip_id_list=skip_id_list, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name)
+                scan_type='DYNAMIC',propose_only=propose_only,id_list=id_list,skip_id_list=skip_id_list, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name, include_proposed=include_proposed)
         if is_sca_vulnerabilities:
             match_sca(all_sca_vulnerabilities, from_app_guid=results_from_app_id, to_app_guid=to_app_id, dry_run=dry_run,annotation_type="vulnerability",propose_only=propose_only, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name)
         if is_sca_licences:
