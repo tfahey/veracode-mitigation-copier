@@ -6,6 +6,8 @@ import datetime
 import os
 
 import anticrlf
+from XMLParser import XMLParser
+
 from veracode_api_py.api import VeracodeAPI as vapi, Applications, Findings, SCAApplications, Sandboxes
 from veracode_api_py.constants import Constants
 from veracode_api_signing.credentials import get_credentials
@@ -86,6 +88,15 @@ def get_findings_by_type(app_guid, scan_type='STATIC', sandbox_guid=None):
         findings = Findings().get_findings(app_guid,scantype=scan_type,annot='TRUE',sandbox=sandbox_guid)
     elif scan_type == 'DYNAMIC':
         findings = Findings().get_findings(app_guid,scantype=scan_type,annot='TRUE')
+
+    return findings
+
+def get_xml_findings_by_type(build_id, scan_type='STATIC'):
+    findings = []
+    if scan_type == 'STATIC':
+        findings = XMLParser().get_findings(build_id, 'staticflaws')
+    elif scan_type == 'DYNAMIC':
+        findings = XMLParser().get_findings(build_id, 'dynamicflaws')
 
     return findings
 
@@ -279,6 +290,18 @@ def get_findings_from(from_app_guid, scan_type, from_sandbox_guid=None):
     logprint('Found {} {} findings in "from" {}'.format(count_from,scan_type.lower(),formatted_app_name))
     return findings_from
 
+def get_xml_findings_from(from_build_id, scan_type):
+    # formatted_app_name = get_formatted_app_name(from_app_guid, from_sandbox_guid)
+    logprint('Getting {} findings for build {}'.format(scan_type.lower(),from_build_id))
+
+    # Get the findings from the detailed XML report for the desired build_id
+    findings_from = get_xml_findings_by_type(from_build_id, scan_type)
+
+    # findings_from = get_findings_by_type(from_app_guid,scan_type=scan_type, sandbox_guid=from_sandbox_guid)
+    count_from = len(findings_from)
+    logprint('Found {} {} findings in "from" {}'.format(count_from,scan_type.lower(),formatted_app_name))
+    return findings_from
+
 def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from_credentials, to_credentials, scan_type='STATIC',from_sandbox_guid=None,
         to_sandbox_guid=None, propose_only=False, id_list=[], skip_id_list=[], fuzzy_match=False, include_original_user=False, include_profile_name=False, include_proposed=False):
     if len(findings_from) == 0:
@@ -431,6 +454,9 @@ def main():
     parser.add_argument('-t', '--toapp', help='App GUID to copy to')
     parser.add_argument('-ts', '--tosandbox', help="Sandbox GUID to copy to (optional)")
 
+    parser.add_argument('-fb', '--frombuildid', help='Build ID to copy from')
+    parser.add_argument('-tb', '--tobuildid', help='Build ID to copy to')
+
     parser.add_argument('-fn', '--fromappname', help='Application Name to copy from')
     parser.add_argument('-fsn', '--fromsandboxname', help='Sandbox Name to copy from')
 
@@ -481,6 +507,11 @@ def main():
     scan_types = args.scan_types
     sca_import_type = args.sca_import_type
 
+    # SET VARIABLES FOR FROM AND TO BUILD IDS
+    use_build_ids = args.use_build_ids
+    results_from_build_id = args.frombuildid
+    results_to_build_id = args.tobuildid
+
     prompt = args.prompt
     dry_run = args.dry_run
     legacy_ids = args.legacy_ids
@@ -524,6 +555,8 @@ def main():
             results_to_app_ids = to_credentials.run_with_credentials(lambda _: get_application_guids_by_name(results_to_app_names))
         if results_to_sandbox_names:
             results_to_sandbox_ids = to_credentials.run_with_credentials(lambda _: get_sandbox_guids_by_name(results_to_app_ids, results_to_sandbox_names))
+        if use_build_ids:
+            results_to_build_id = to_credentials.run_with_credentials(lambda _: get_application_guids_by_name(results_to_app_names))
 
     is_sast = False
     is_dast = False
@@ -562,8 +595,12 @@ def main():
         results_from_app_id = results_from
         results_to_app_ids = results_to
 
+    # get static findings from the XML Detailed Report
+    if use_build_ids and is_sast:
+        all_static_findings = from_credentials.run_with_credentials(
+            lambda _: get_xml_findings_from(from_build_id=results_from_build_id, scan_type='STATIC'))
     # get static findings and apply mitigations
-    if is_sast:
+    elif is_sast:
         all_static_findings = from_credentials.run_with_credentials(lambda _: get_findings_from(from_app_guid=results_from_app_id, scan_type='STATIC',
             from_sandbox_guid=results_from_sandbox_id))
     if is_dast:
