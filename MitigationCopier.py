@@ -95,20 +95,20 @@ def logprint(log_msg):
 
 def filter_approved(findings,id_list, skip_id_list):
     if skip_id_list is not None:
-        log.info('Skipping the following findings provided in skip_id_list: {}'.format(id_list))
+        logprint('Skipping the following findings provided in skip_id_list: {}'.format(id_list))
         findings = [f for f in findings if not f['issue_id'] in skip_id_list]
     elif id_list is not None:
-        log.info('Only copying the following findings provided in id_list: {}'.format(id_list))
+        logprint('Only copying the following findings provided in id_list: {}'.format(id_list))
         findings = [f for f in findings if f['issue_id'] in id_list]
 
     return [f for f in findings if (f['finding_status']['resolution_status'] == 'APPROVED')]
 
 def filter_proposed(findings,id_list, skip_id_list):
     if skip_id_list is not None:
-        log.info('Skipping the following findings provided in skip_id_list: {}'.format(id_list))
+        logprint('Skipping the following findings provided in skip_id_list: {}'.format(id_list))
         findings = [f for f in findings if not f['issue_id'] in skip_id_list]
     elif id_list is not None:
-        log.info('Only copying the following findings provided in id_list: {}'.format(id_list))
+        logprint('Only copying the following findings provided in id_list: {}'.format(id_list))
         findings = [f for f in findings if f['issue_id'] in id_list]
 
     return [f for f in findings if (f['finding_status']['resolution_status'] == 'PROPOSED')]
@@ -174,7 +174,7 @@ def submit_sca_mitigation(app_guid, action, comment, component_id, annotation_ty
         else:
             SCAApplications().add_annotation(app_guid=app_guid, action=action, comment=comment, annotation_type="LICENSE",
                                              component_id=component_id,license_id=issue_id)
-        log.info(f'Updated {annotation_type} mitigation information to {action} for component {component_id} and issue_id {issue_id} in application {app_guid}')
+        logprint(f'Updated {annotation_type} mitigation information to {action} for component {component_id} and issue_id {issue_id} in application {app_guid}')
         return True
     except:
         log.error(f'Unable to submit {annotation_type} mitigation information to {action} for component {component_id} and issue_id {issue_id} in application {app_guid}')
@@ -205,7 +205,7 @@ def update_mitigation_info_rest(to_app_guid,flaw_id,action,comment,sandbox_guid=
         return
     elif action == 'APPROVED':
         if propose_only:
-            log.info('propose_only set to True; skipping applying approval for flaw_id {}'.format(flaw_id))
+            logprint('propose_only set to True; skipping applying approval for flaw_id {}'.format(flaw_id))
             return
         action = Constants.ANNOT_TYPE[action]
     flaw_id_list = [flaw_id]
@@ -213,7 +213,7 @@ def update_mitigation_info_rest(to_app_guid,flaw_id,action,comment,sandbox_guid=
         Findings().add_annotation(to_app_guid,flaw_id_list,comment,action)
     else:
         Findings().add_annotation(to_app_guid,flaw_id_list,comment,action,sandbox=sandbox_guid)
-    log.info(
+    logprint(
         'Updated mitigation information to {} for Flaw ID {} in {}'.format(action, str(flaw_id_list), to_app_guid))
 
 def set_in_memory_flaw_to_approved(findings_to,to_id):
@@ -265,7 +265,7 @@ def match_sca(findings_from_approved, from_app_guid, to_app_guid, dry_run, annot
 
         counter += 1
 
-    print('[*] Updated {} flaws in {}. See log file for details.'.format(str(counter),formatted_to))
+    logprint('[*] Updated {} flaws in {}. See log file for details.'.format(str(counter),formatted_to))
 
 def get_formatted_app_name(app_guid, sandbox_guid):
     app_name = get_application_name(app_guid)
@@ -330,12 +330,12 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
         match = Findings().match(this_to_finding,findings_from,approved_matches_only=(not include_proposed),allow_fuzzy_match=fuzzy_match)
 
         if match == None:
-            log.info('No approved match found for finding {} in {}'.format(to_id,formatted_from))
+            logprint('No approved match found for finding {} in {}'.format(to_id,formatted_from))
             continue
 
         from_id = match.get('id')
 
-        log.info('Source flaw {} in {} has a possible target match in flaw {} in {}.'.format(from_id,formatted_from,to_id,formatted_to))
+        logprint('Source flaw {} in {} has a possible target match in flaw {} in {}.'.format(from_id,formatted_from,to_id,formatted_to))
 
         # Since we are pulling all findings, filter and ignore any findings that have 0 annotations
         mitigation_list = ''
@@ -358,8 +358,8 @@ def match_for_scan_type(findings_from, from_app_guid, to_app_guid, dry_run, from
 
         set_in_memory_flaw_to_approved(copy_array_to,to_id) # so we don't attempt to mitigate approved finding twice
         counter += 1
-
-    print('[*] Updated {} flaws in {}. See log file for details.'.format(str(counter),formatted_to))
+    #TODO Add a counter for # of flaws matched vs # of flaws actually updated with mitigations copied
+    logprint('[*] Matched {} flaws in {}. See log file for details.'.format(str(counter),formatted_to))
 
 def get_exact_sandbox_name_match(sandbox_name, sandbox_candidates):
     for sandbox_candidate in sandbox_candidates:
@@ -585,6 +585,9 @@ def main():
             match_sca(all_sca_vulnerabilities, from_app_guid=results_from_app_id, to_app_guid=to_app_id, dry_run=dry_run,annotation_type="vulnerability",propose_only=propose_only, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name)
         if is_sca_licences:
             match_sca(all_sca_licenses, from_app_guid=results_from_app_id, to_app_guid=to_app_id, dry_run=dry_run,annotation_type="license",propose_only=propose_only, from_credentials=from_credentials, to_credentials=to_credentials, include_original_user=include_original_user, include_profile_name=include_profile_name)
+
+    logprint('======== ending MitigationCopier.py run ========')
+
 
 if __name__ == '__main__':
     main()
